@@ -1,0 +1,1 @@
+A simple trail to check the working with Git
