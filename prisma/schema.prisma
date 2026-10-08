@@ -1,0 +1,286 @@
+// ============================================================
+//  UniVerse database schema
+//  Each "model" below becomes one table in PostgreSQL.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection (used by the running server)
+  directUrl = env("DIRECT_URL")   // direct connection (used when creating/changing tables)
+}
+
+// ------------------------------------------------------------
+//  SHARED — owned by Person B (User & Access Management)
+//  Person C only relies on: id, name, avatarUrl, skills, role.
+//  Person B can ADD fields here freely; please don't rename those five.
+// ------------------------------------------------------------
+
+enum Role {
+  STUDENT
+  COORDINATOR
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String?
+  role         Role     @default(STUDENT)
+  avatarUrl    String?
+  skills       String[] @default([]) // stored lowercase, used for team matching
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Person C relations
+  posts                   Post[]
+  comments                Comment[]
+  postLikes               PostLike[]
+  listings                Listing[]
+  teamsOwned              Team[]               @relation("TeamOwner")
+  teamMemberships         TeamMember[]
+  teamRequests            TeamRequest[]
+  conversationMemberships ConversationMember[]
+  messages                Message[]
+  notifications           Notification[]
+}
+
+// ------------------------------------------------------------
+//  PERSON C — Social: Feed
+// ------------------------------------------------------------
+
+enum PostCategory {
+  GENERAL
+  ACADEMIC
+  EVENTS
+  OPPORTUNITIES
+  CLUBS
+  LOST_AND_FOUND
+  QUESTIONS
+}
+
+model Post {
+  id          String       @id @default(uuid())
+  authorId    String
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content     String
+  category    PostCategory @default(GENERAL)
+  imageUrl    String?
+  isAnonymous Boolean      @default(false) // author is hidden from other students
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  comments Comment[]
+  likes    PostLike[]
+
+  @@index([category, createdAt])
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content     String
+  isAnonymous Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([postId, createdAt])
+}
+
+model PostLike {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId]) // one like per user per post
+}
+
+// ------------------------------------------------------------
+//  PERSON C — Social: Marketplace
+// ------------------------------------------------------------
+
+enum ListingCategory {
+  BOOKS
+  ELECTRONICS
+  STATIONERY
+  LAB_EQUIPMENT
+  CLOTHING
+  FURNITURE
+  OTHER
+}
+
+enum ListingCondition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+}
+
+enum ListingStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+}
+
+model Listing {
+  id          String           @id @default(uuid())
+  sellerId    String
+  seller      User             @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  price       Int // in rupees
+  category    ListingCategory  @default(OTHER)
+  condition   ListingCondition @default(GOOD)
+  imageUrls   String[]         @default([])
+  status      ListingStatus    @default(AVAILABLE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, createdAt])
+}
+
+// ------------------------------------------------------------
+//  PERSON C — Collaboration & Team Finder
+// ------------------------------------------------------------
+
+enum TeamStatus {
+  OPEN
+  CLOSED
+}
+
+enum TeamRole {
+  LEADER
+  MEMBER
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model Team {
+  id           String     @id @default(uuid())
+  ownerId      String
+  owner        User       @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  title        String
+  description  String
+  eventName    String? // e.g. "Smart India Hackathon 2026"
+  skillsNeeded String[]   @default([]) // stored lowercase
+  maxMembers   Int        @default(4)
+  status       TeamStatus @default(OPEN)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  members      TeamMember[]
+  requests     TeamRequest[]
+  conversation Conversation? // the team's auto-created group chat
+
+  @@index([status, createdAt])
+}
+
+model TeamMember {
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  @@id([teamId, userId])
+}
+
+model TeamRequest {
+  id        String        @id @default(uuid())
+  teamId    String
+  team      Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String?
+  status    RequestStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([teamId, userId]) // a student can request to join a team only once
+}
+
+// ------------------------------------------------------------
+//  PERSON C — Communication: Messaging
+// ------------------------------------------------------------
+
+enum ConversationType {
+  DIRECT // one-to-one chat
+  GROUP // team chat
+}
+
+model Conversation {
+  id        String           @id @default(uuid())
+  type      ConversationType
+  name      String? // only for group chats
+  directKey String?          @unique // "idA_idB" (sorted) so two people share exactly one DM
+  teamId    String?          @unique
+  team      Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt // bumped on every new message, used for sorting
+
+  members  ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime     @default(now()) // messages after this time count as unread
+  joinedAt       DateTime     @default(now())
+
+  @@id([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// ------------------------------------------------------------
+//  PERSON C — Notifications
+// ------------------------------------------------------------
+
+enum NotificationType {
+  POST_LIKE
+  POST_COMMENT
+  TEAM_REQUEST
+  TEAM_REQUEST_ACCEPTED
+  TEAM_REQUEST_REJECTED
+  MARKETPLACE_INTEREST
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json? // extra info for the app, e.g. { "postId": "..." } to open the right screen
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead, createdAt])
+}

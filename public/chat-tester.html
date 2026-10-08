@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UniVerse · Chat tester</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #f4f5f7; color: #1d1f23; }
+  header { padding: 12px 16px; background: #283593; color: #fff; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  input, button, select { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #c5c8ce; }
+  button { background: #3949ab; color: #fff; border: none; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: 260px 1fr 260px; gap: 12px; padding: 12px; height: calc(100vh - 60px); }
+  section { background: #fff; border-radius: 10px; padding: 12px; overflow: auto; display: flex; flex-direction: column; min-height: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; color: #666; margin: 0 0 8px; }
+  .convo { padding: 8px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; }
+  .convo:hover, .convo.active { background: #e8eaf6; }
+  .badge { background: #e53935; color: #fff; border-radius: 10px; padding: 0 7px; font-size: 12px; }
+  #messages { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+  .msg { max-width: 70%; padding: 6px 10px; border-radius: 10px; background: #eceff1; }
+  .msg.mine { align-self: flex-end; background: #c5cae9; }
+  .msg small { display: block; color: #666; font-size: 11px; }
+  #typing { height: 18px; font-size: 12px; color: #666; }
+  .row { display: flex; gap: 6px; margin-top: 6px; }
+  .row input { flex: 1; }
+  .note { font-size: 13px; border-bottom: 1px solid #eee; padding: 6px 0; }
+  #status { font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>💬 UniVerse chat tester</h1>
+  <input id="email" placeholder="email, e.g. rahul@test.com" />
+  <input id="name" placeholder="name (optional)" />
+  <button id="loginBtn">Log in</button>
+  <span id="status">Not connected</span>
+</header>
+<main>
+  <section>
+    <h2>Chats</h2>
+    <div id="convos"></div>
+    <h2 style="margin-top:16px">Start a DM</h2>
+    <div class="row"><select id="users"></select><button id="dmBtn">Open</button></div>
+  </section>
+  <section>
+    <h2 id="chatTitle">Pick a chat</h2>
+    <div id="messages"></div>
+    <div id="typing"></div>
+    <div class="row">
+      <input id="text" placeholder="Type a message…" disabled />
+      <button id="sendBtn" disabled>Send</button>
+    </div>
+  </section>
+  <section>
+    <h2>Live notifications</h2>
+    <div id="notes"></div>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  // Tip: open this page in TWO browser windows (one normal, one incognito),
+  // log in as two different emails, and chat between them.
+  let token = null, me = null, socket = null, current = null, typingTimer = null;
+  const $ = (id) => document.getElementById(id);
+
+  async function api(path, options = {}) {
+    const res = await fetch(path, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(token && { Authorization: 'Bearer ' + token }) },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  }
+
+  $('loginBtn').onclick = async () => {
+    try {
+      const body = { email: $('email').value };
+      if ($('name').value) body.name = $('name').value;
+      const data = await api('/api/dev/login', { method: 'POST', body: JSON.stringify(body) });
+      token = data.token; me = data.user;
+      connectSocket();
+      await Promise.all([loadConvos(), loadUsers()]);
+    } catch (e) { alert(e.message); }
+  };
+
+  function connectSocket() {
+    if (socket) socket.disconnect();
+    socket = io({ auth: { token } });
+    socket.on('connect', () => ($('status').textContent = '🟢 Connected as ' + me.name));
+    socket.on('disconnect', () => ($('status').textContent = '🔴 Disconnected'));
+    socket.on('connect_error', (e) => ($('status').textContent = '⚠️ ' + e.message));
+    socket.on('message:new', (msg) => {
+      if (current && msg.conversationId === current) {
+        addMessage(msg);
+        socket.emit('conversation:read', { conversationId: current });
+      }
+      loadConvos();
+    });
+    socket.on('typing', ({ conversationId, isTyping }) => {
+      if (conversationId === current) $('typing').textContent = isTyping ? 'typing…' : '';
+    });
+    socket.on('notification:new', (n) => {
+      const div = document.createElement('div');
+      div.className = 'note';
+      div.innerHTML = '<b></b><br><span></span>';
+      div.querySelector('b').textContent = n.title;
+      div.querySelector('span').textContent = n.body;
+      $('notes').prepend(div);
+    });
+  }
+
+  async function loadConvos() {
+    const convos = await api('/api/conversations');
+    $('convos').innerHTML = '';
+    for (const c of convos) {
+      const div = document.createElement('div');
+      div.className = 'convo' + (c.id === current ? ' active' : '');
+      div.innerHTML = '<span></span>' + (c.unreadCount ? '<span class="badge">' + c.unreadCount + '</span>' : '');
+      div.firstChild.textContent = (c.type === 'GROUP' ? '👥 ' : '') + c.name;
+      div.onclick = () => openConvo(c.id, c.name);
+      $('convos').appendChild(div);
+    }
+  }
+
+  async function loadUsers() {
+    const users = await api('/api/dev/users');
+    $('users').innerHTML = users
+      .filter((u) => u.id !== me.id)
+      .map((u) => '<option value="' + u.id + '">' + u.name.replace(/</g, '') + '</option>')
+      .join('');
+  }
+
+  $('dmBtn').onclick = async () => {
+    if (!$('users').value) return;
+    const c = await api('/api/conversations/direct', { method: 'POST', body: JSON.stringify({ userId: $('users').value }) });
+    await loadConvos();
+    openConvo(c.id, c.name);
+  };
+
+  async function openConvo(id, name) {
+    current = id;
+    $('chatTitle').textContent = name;
+    $('messages').innerHTML = '';
+    $('typing').textContent = '';
+    $('text').disabled = $('sendBtn').disabled = false;
+    const msgs = await api('/api/conversations/' + id + '/messages');
+    msgs.forEach(addMessage);
+    socket.emit('conversation:read', { conversationId: id }, loadConvos);
+  }
+
+  function addMessage(m) {
+    const div = document.createElement('div');
+    div.className = 'msg' + (m.senderId === me.id ? ' mine' : '');
+    div.innerHTML = '<small></small><span></span>';
+    div.querySelector('small').textContent = m.sender.name + ' · ' + new Date(m.createdAt).toLocaleTimeString();
+    div.querySelector('span').textContent = m.content;
+    $('messages').appendChild(div);
+    $('messages').scrollTop = $('messages').scrollHeight;
+  }
+
+  function send() {
+    const content = $('text').value.trim();
+    if (!content || !current) return;
+    socket.emit('message:send', { conversationId: current, content }, (res) => {
+      if (!res.ok) alert(res.error);
+    });
+    $('text').value = '';
+    socket.emit('typing', { conversationId: current, isTyping: false });
+  }
+  $('sendBtn').onclick = send;
+  $('text').onkeydown = (e) => {
+    if (e.key === 'Enter') return send();
+    socket.emit('typing', { conversationId: current, isTyping: true });
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => socket.emit('typing', { conversationId: current, isTyping: false }), 1500);
+  };
+</script>
+</body>
+</html>
