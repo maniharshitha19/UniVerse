@@ -1,19 +1,13 @@
 import { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Card, Text, Avatar, Chip, Button, useTheme } from 'react-native-paper';
+import { useNavigation } from '@react-navigation/native';
 import client from '../api/client';
+import { initials } from '../api/mappers';
 
-function getInitials(name) {
-  return name
-    .split(' ')
-    .map((word) => word[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-export default function PostCard({ post }) {
+export default function PostCard({ post, inDetail = false }) {
   const theme = useTheme();
+  const navigation = useNavigation();
   const muted = theme.colors.onSurfaceVariant;
   const [liked, setLiked] = useState(post.liked);
   const [likeCount, setLikeCount] = useState(post.likes);
@@ -23,6 +17,10 @@ export default function PostCard({ post }) {
     setLiked(post.liked);
     setLikeCount(post.likes);
   }, [post.liked, post.likes]);
+
+  const openDetail = inDetail
+    ? undefined
+    : () => navigation.navigate('PostDetail', { postId: post.id });
 
   const toggleLike = async () => {
     const before = { liked, likeCount };
@@ -41,14 +39,14 @@ export default function PostCard({ post }) {
   };
 
   return (
-    <Card>
+    <Card onPress={openDetail}>
       {post.imageUrl ? <Card.Cover source={{ uri: post.imageUrl }} /> : null}
       <Card.Content style={post.imageUrl ? styles.contentWithCover : undefined}>
         <View style={styles.header}>
           {post.anonymous ? (
             <Avatar.Icon size={40} icon="incognito" style={styles.anonAvatar} />
           ) : (
-            <Avatar.Text size={40} label={getInitials(post.author)} />
+            <Avatar.Text size={40} label={initials(post.author)} />
           )}
           <View style={styles.headerText}>
             <Text variant="titleSmall" style={styles.author}>
@@ -81,7 +79,7 @@ export default function PostCard({ post }) {
             >
               {String(likeCount)}
             </Button>
-            <Button compact icon="comment-outline" textColor={muted}>
+            <Button compact icon="comment-outline" textColor={muted} onPress={openDetail}>
               {String(post.comments)}
             </Button>
           </View>

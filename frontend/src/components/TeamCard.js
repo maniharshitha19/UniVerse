@@ -1,12 +1,18 @@
 import { useState } from 'react';
 import { View, Alert, StyleSheet } from 'react-native';
 import { Card, Text, Chip, Button, ProgressBar, useTheme } from 'react-native-paper';
+import { useNavigation } from '@react-navigation/native';
 import client, { getErrorMessage } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
-export default function TeamCard({ team }) {
+export default function TeamCard({ team, fullWidth = false }) {
   const theme = useTheme();
+  const navigation = useNavigation();
+  const { userId } = useAuth();
   const [requested, setRequested] = useState(team.requested);
   const [sending, setSending] = useState(false);
+  const isLeader = Boolean(team.leaderId) && team.leaderId === userId;
+  const isOpen = team.status === 'OPEN';
 
   const sendRequest = async () => {
     setSending(true);
@@ -21,7 +27,10 @@ export default function TeamCard({ team }) {
   };
 
   return (
-    <Card style={styles.card}>
+    <Card
+      style={fullWidth ? styles.full : styles.card}
+      onPress={() => navigation.navigate('TeamDetail', { teamId: team.id })}
+    >
       <Card.Content>
         <Text variant="labelMedium" style={{ color: theme.colors.primary }}>
           {team.event}
@@ -66,15 +75,21 @@ export default function TeamCard({ team }) {
           <Text variant="bodySmall">
             {team.filled} of {team.total} joined
           </Text>
-          <Button
-            mode={requested ? 'outlined' : 'contained'}
-            compact
-            loading={sending}
-            disabled={requested || sending}
-            onPress={sendRequest}
-          >
-            {requested ? 'Requested' : 'Request'}
-          </Button>
+          {isLeader ? (
+            <Chip compact>Your team</Chip>
+          ) : !isOpen ? (
+            <Chip compact>Closed</Chip>
+          ) : (
+            <Button
+              mode={requested ? 'outlined' : 'contained'}
+              compact
+              loading={sending}
+              disabled={requested || sending}
+              onPress={sendRequest}
+            >
+              {requested ? 'Requested' : 'Request'}
+            </Button>
+          )}
         </View>
       </Card.Content>
     </Card>
@@ -83,6 +98,7 @@ export default function TeamCard({ team }) {
 
 const styles = StyleSheet.create({
   card: { width: 280 },
+  full: { width: '100%' },
   title: { fontWeight: '700', marginTop: 4, minHeight: 40 },
   owner: { opacity: 0.7, marginTop: 4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },

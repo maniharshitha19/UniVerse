@@ -8,6 +8,10 @@ export function setAuthToken(token) {
   authToken = token;
 }
 
+export function getAuthToken() {
+  return authToken;
+}
+
 const client = axios.create({ baseURL: API_URL, timeout: 15000 });
 
 client.interceptors.request.use((config) => {

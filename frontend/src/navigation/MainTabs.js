@@ -4,6 +4,8 @@ import { useTheme } from 'react-native-paper';
 
 import HomeScreen from '../screens/home/HomeScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import TeamFinderScreen from '../screens/teams/TeamFinderScreen';
+import MarketplaceScreen from '../screens/market/MarketplaceScreen';
 import PlaceholderScreen from '../components/PlaceholderScreen';
 
 const Tab = createBottomTabNavigator();
@@ -16,6 +18,16 @@ const tabIcons = {
   Market: ['storefront-outline', 'storefront'],
   Profile: ['account-circle-outline', 'account-circle'],
 };
+
+function EventsPlaceholder() {
+  return (
+    <PlaceholderScreen
+      title="Events and clubs"
+      icon="calendar-month-outline"
+      note="Discover events, register in one tap, and follow your clubs. Coming soon."
+    />
+  );
+}
 
 export default function MainTabs() {
   const theme = useTheme();
@@ -42,33 +54,9 @@ export default function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Teams">
-        {() => (
-          <PlaceholderScreen
-            title="Team finder"
-            icon="account-group-outline"
-            note="Browse open teams, filter by skill, and send join requests. Coming soon."
-          />
-        )}
-      </Tab.Screen>
-      <Tab.Screen name="Events">
-        {() => (
-          <PlaceholderScreen
-            title="Events and clubs"
-            icon="calendar-month-outline"
-            note="Discover events, register in one tap, and follow your clubs. Coming soon."
-          />
-        )}
-      </Tab.Screen>
-      <Tab.Screen name="Market">
-        {() => (
-          <PlaceholderScreen
-            title="Campus marketplace"
-            icon="storefront-outline"
-            note="Buy and sell books, gadgets, and more within your campus. Coming soon."
-          />
-        )}
-      </Tab.Screen>
+      <Tab.Screen name="Teams" component={TeamFinderScreen} />
+      <Tab.Screen name="Events" component={EventsPlaceholder} />
+      <Tab.Screen name="Market" component={MarketplaceScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
