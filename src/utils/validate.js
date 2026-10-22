@@ -13,4 +13,10 @@ function parse(schema, data) {
 // Lets async route handlers pass errors to the error handler.
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-module.exports = { parse, wrap };
+function paging(query) {
+  const page = Math.max(1, parseInt(query.page) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(query.limit) || 20));
+  return { page, limit };
+}
+
+module.exports = { parse, wrap, paging };
