@@ -10,7 +10,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL") // pooled connection (used by the running server)
-  directUrl = env("DIRECT_URL")   // direct connection (used when creating/changing tables)
+  directUrl = env("DIRECT_URL") // direct connection (used when creating/changing tables)
 }
 
 // ------------------------------------------------------------
@@ -52,6 +52,12 @@ model User {
   conversationMemberships ConversationMember[]
   messages                Message[]
   notifications           Notification[]
+
+  // Person B relations
+  clubsCoordinated   Club[]              @relation("ClubCoordinator")
+  clubMemberships    ClubMember[]
+  eventsCreated      Event[]
+  eventRegistrations EventRegistration[]
 }
 
 // ------------------------------------------------------------
@@ -288,4 +294,70 @@ model Notification {
   createdAt DateTime         @default(now())
 
   @@index([userId, isRead, createdAt])
+}
+
+// ------------------------------------------------------------
+//  PERSON B — Clubs & Events
+// ------------------------------------------------------------
+
+enum EventStatus {
+  ACTIVE
+  CANCELLED
+}
+
+model Club {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  description   String
+  category      String? // e.g. "Technical", "Cultural", "Sports"
+  logoUrl       String?
+  coordinatorId String
+  coordinator   User     @relation("ClubCoordinator", fields: [coordinatorId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members ClubMember[]
+  events  Event[]
+}
+
+model ClubMember {
+  clubId   String
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@id([clubId, userId])
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  clubId      String
+  club        Club        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  venue       String
+  startsAt    DateTime
+  endsAt      DateTime?
+  capacity    Int? // null = unlimited seats
+  imageUrl    String?
+  status      EventStatus @default(ACTIVE)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  registrations EventRegistration[]
+
+  @@index([status, startsAt])
+}
+
+model EventRegistration {
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([eventId, userId]) // one registration per student per event
 }
