@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Card, Text, Avatar, Chip, Button, useTheme } from 'react-native-paper';
+import client from '../api/client';
 
 function getInitials(name) {
   return name
@@ -13,13 +14,36 @@ function getInitials(name) {
 
 export default function PostCard({ post }) {
   const theme = useTheme();
-  const [liked, setLiked] = useState(false);
   const muted = theme.colors.onSurfaceVariant;
-  const likeCount = post.likes + (liked ? 1 : 0);
+  const [liked, setLiked] = useState(post.liked);
+  const [likeCount, setLikeCount] = useState(post.likes);
+
+  // Keep in sync when the feed is refreshed from the backend.
+  useEffect(() => {
+    setLiked(post.liked);
+    setLikeCount(post.likes);
+  }, [post.liked, post.likes]);
+
+  const toggleLike = async () => {
+    const before = { liked, likeCount };
+    // Update the screen instantly, then confirm with the backend.
+    setLiked(!liked);
+    setLikeCount(likeCount + (liked ? -1 : 1));
+    try {
+      const res = await client.post(`/api/posts/${post.id}/like`);
+      const data = res.data?.data ?? res.data;
+      if (typeof data?.liked === 'boolean') setLiked(data.liked);
+      if (typeof data?.likeCount === 'number') setLikeCount(data.likeCount);
+    } catch (error) {
+      setLiked(before.liked);
+      setLikeCount(before.likeCount);
+    }
+  };
 
   return (
     <Card>
-      <Card.Content>
+      {post.imageUrl ? <Card.Cover source={{ uri: post.imageUrl }} /> : null}
+      <Card.Content style={post.imageUrl ? styles.contentWithCover : undefined}>
         <View style={styles.header}>
           {post.anonymous ? (
             <Avatar.Icon size={40} icon="incognito" style={styles.anonAvatar} />
@@ -53,7 +77,7 @@ export default function PostCard({ post }) {
               compact
               icon={liked ? 'heart' : 'heart-outline'}
               textColor={liked ? '#E5484D' : muted}
-              onPress={() => setLiked(!liked)}
+              onPress={toggleLike}
             >
               {String(likeCount)}
             </Button>
@@ -68,6 +92,7 @@ export default function PostCard({ post }) {
 }
 
 const styles = StyleSheet.create({
+  contentWithCover: { paddingTop: 16 },
   header: { flexDirection: 'row', alignItems: 'center' },
   headerText: { marginLeft: 12, flex: 1 },
   author: { fontWeight: '700' },

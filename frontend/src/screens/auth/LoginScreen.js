@@ -1,16 +1,29 @@
 import { useState } from 'react';
 import { StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, Button, useTheme } from 'react-native-paper';
+import { Text, TextInput, Button, HelperText, useTheme } from 'react-native-paper';
+import { useAuth } from '../../context/AuthContext';
+import { getErrorMessage } from '../../api/client';
 
 export default function LoginScreen({ navigation }) {
   const theme = useTheme();
-  const [email, setEmail] = useState('');
+  const { login } = useAuth();
+  // Pre-filled with a test account from the backend's sample data.
+  const [email, setEmail] = useState('aarav@test.com');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleLogin = () => {
-    // Backend isn't connected yet, so for now just open the app.
-    navigation.replace('Main');
+  const handleLogin = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await login(email.trim());
+      navigation.replace('Main');
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,17 +65,23 @@ export default function LoginScreen({ navigation }) {
         style={styles.input}
       />
 
+      <HelperText type="error" visible={Boolean(error)}>
+        {error}
+      </HelperText>
+
       <Button
         mode="contained"
         onPress={handleLogin}
+        loading={loading}
+        disabled={loading}
         style={styles.button}
         contentStyle={styles.buttonContent}
       >
         Log in
       </Button>
-      <Button mode="text" onPress={() => {}}>
-        Don't have an account? Sign up
-      </Button>
+      <Text variant="bodySmall" style={styles.testNote}>
+        Testing mode: use a sample account such as aarav@test.com. Any password works.
+      </Text>
     </KeyboardAvoidingView>
   );
 }
@@ -74,4 +93,5 @@ const styles = StyleSheet.create({
   input: { marginBottom: 16 },
   button: { marginTop: 8, borderRadius: 12 },
   buttonContent: { paddingVertical: 6 },
+  testNote: { textAlign: 'center', marginTop: 16, opacity: 0.6 },
 });

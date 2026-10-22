@@ -1,10 +1,24 @@
 import { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Alert, StyleSheet } from 'react-native';
 import { Card, Text, Chip, Button, ProgressBar, useTheme } from 'react-native-paper';
+import client, { getErrorMessage } from '../api/client';
 
 export default function TeamCard({ team }) {
   const theme = useTheme();
-  const [requested, setRequested] = useState(false);
+  const [requested, setRequested] = useState(team.requested);
+  const [sending, setSending] = useState(false);
+
+  const sendRequest = async () => {
+    setSending(true);
+    try {
+      await client.post(`/api/teams/${team.id}/requests`, {});
+      setRequested(true);
+    } catch (error) {
+      Alert.alert('Could not send request', getErrorMessage(error));
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <Card style={styles.card}>
@@ -20,20 +34,31 @@ export default function TeamCard({ team }) {
         </Text>
 
         <View style={styles.chips}>
-          {team.skills.map((skill) => (
-            <Chip
-              key={skill}
-              compact
-              style={{ backgroundColor: theme.colors.primaryContainer }}
-              textStyle={{ color: theme.colors.primary, fontSize: 12 }}
-            >
-              {skill}
-            </Chip>
-          ))}
+          {team.skills.map((skill) => {
+            // Skills that match your own profile are highlighted.
+            const isMatch = team.matched.includes(skill);
+            return (
+              <Chip
+                key={skill}
+                compact
+                style={{
+                  backgroundColor: isMatch
+                    ? theme.colors.primary
+                    : theme.colors.primaryContainer,
+                }}
+                textStyle={{
+                  color: isMatch ? '#FFFFFF' : theme.colors.primary,
+                  fontSize: 12,
+                }}
+              >
+                {skill}
+              </Chip>
+            );
+          })}
         </View>
 
         <ProgressBar
-          progress={team.filled / team.total}
+          progress={Math.min(team.filled / team.total, 1)}
           color={theme.colors.primary}
           style={styles.progress}
         />
@@ -44,7 +69,9 @@ export default function TeamCard({ team }) {
           <Button
             mode={requested ? 'outlined' : 'contained'}
             compact
-            onPress={() => setRequested(!requested)}
+            loading={sending}
+            disabled={requested || sending}
+            onPress={sendRequest}
           >
             {requested ? 'Requested' : 'Request'}
           </Button>
