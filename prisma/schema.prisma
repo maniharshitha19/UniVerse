@@ -33,6 +33,11 @@ model User {
   role         Role     @default(STUDENT)
   avatarUrl    String?
   skills       String[] @default([]) // stored lowercase, used for team matching
+  department   String?
+  year         Int?
+  bio          String?
+  interests    String[] @default([])
+  projectLinks String[] @default([])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
