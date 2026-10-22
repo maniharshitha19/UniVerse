@@ -1,7 +1,7 @@
 const prisma = require('../../lib/prisma');
 const { HttpError } = require('../../utils/httpError');
 const { assertCanManage } = require('../clubs/clubs.service');
-
+const { notify } = require('../notifications/notifications.service');
 const CLUB = { select: { id: true, name: true, logoUrl: true, coordinatorId: true } };
 const REG_COUNT = { _count: { select: { registrations: true } } };
 
@@ -44,7 +44,25 @@ async function createEvent(user, data) {
   assertCanManage(club, user);
   if (data.startsAt <= new Date()) throw new HttpError(400, 'Event must start in the future');
   if (data.endsAt && data.endsAt <= data.startsAt) throw new HttpError(400, 'End time must be after start time');
-  return prisma.event.create({ data: { ...data, createdById: user.id } });
+
+  const event = await prisma.event.create({ data: { ...data, createdById: user.id } });
+
+  // Tell the club's members about the new event (the creator is skipped)
+  const members = await prisma.clubMember.findMany({
+    where: { clubId: club.id, userId: { not: user.id } },
+    select: { userId: true },
+  });
+  await Promise.all(
+    members.map((m) =>
+      notify(m.userId, {
+        type: 'NEW_EVENT',
+        title: `New event in ${club.name}`,
+        body: `${event.title} at ${event.venue}`,
+        data: { eventId: event.id, clubId: club.id },
+      }),
+    ),
+  );
+  return event;
 }
 
 async function updateEvent(id, user, data) {
@@ -60,7 +78,26 @@ async function updateEvent(id, user, data) {
   const endsAt = data.endsAt ?? event.endsAt;
   if (endsAt && endsAt <= startsAt) throw new HttpError(400, 'End time must be after start time');
 
-  return prisma.event.update({ where: { id }, data });
+  const updated = await prisma.event.update({ where: { id }, data });
+
+  // If the event was just cancelled, tell everyone who registered
+  if (data.status === 'CANCELLED' && event.status !== 'CANCELLED') {
+    const registrations = await prisma.eventRegistration.findMany({
+      where: { eventId: id },
+      select: { userId: true },
+    });
+    await Promise.all(
+      registrations.map((r) =>
+        notify(r.userId, {
+          type: 'EVENT_CANCELLED',
+          title: 'Event cancelled',
+          body: `"${event.title}" has been cancelled`,
+          data: { eventId: id, clubId: event.clubId },
+        }),
+      ),
+    );
+  }
+  return updated;
 }
 
 async function deleteEvent(id, user) {
@@ -76,7 +113,7 @@ async function deleteEvent(id, user) {
 // The row lock (FOR UPDATE) makes concurrent requests wait their turn,
 // so two students can never take the last seat at the same time.
 async function register(eventId, user) {
-  return prisma.$transaction(async (tx) => {
+  const event = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${eventId} FOR UPDATE`;
 
     const event = await tx.event.findUnique({ where: { id: eventId }, include: REG_COUNT });
@@ -92,7 +129,16 @@ async function register(eventId, user) {
     if (event.capacity != null && event._count.registrations >= event.capacity) {
       throw new HttpError(409, 'Sorry, this event is full');
     }
-    return tx.eventRegistration.create({ data: { eventId, userId: user.id } });
+    await tx.eventRegistration.create({ data: { eventId, userId: user.id } });
+    return event;
+  });
+
+  // Sent after the transaction succeeds, never inside it
+  await notify(user.id, {
+    type: 'EVENT_REGISTERED',
+    title: "You're registered!",
+    body: `You're registered for "${event.title}" at ${event.venue}`,
+    data: { eventId },
   });
 }
 
