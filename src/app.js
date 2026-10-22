@@ -27,7 +27,9 @@ if (!env.isProduction) {
 }
 
 // ---- Person B's routes go here (auth, profiles, events, clubs) ----
-// app.use('/api/auth', require('./modules/auth/auth.routes'));
+// ---- Person B's routes (auth, profiles, events, clubs) ----
+app.use('/api/auth', require('./modules/auth/auth.routes'));
+app.use('/api/users', require('./modules/users/users.routes'));
 
 // ---- Person C: Social & Communication + Team Finder ----
 app.use('/api/posts', require('./modules/feed/feed.routes'));

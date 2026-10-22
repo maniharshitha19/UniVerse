@@ -1,20 +1,18 @@
-// ============================================================
-//  ⚠️  TEMPORARY AUTH — Person B owns login/signup.
-//
-//  Agreement with Person B (keep these the same and nothing breaks):
-//   1. Tokens are JWTs signed with JWT_SECRET from .env
-//   2. Token payload contains { userId, role }
-//   3. The app sends it as:  Authorization: Bearer <token>
-//
-//  Person B can replace this file with their own version as long as
-//  requireAuth still sets req.user = { id, role }.
-// ============================================================
 const jwt = require('jsonwebtoken');
 const { jwtSecret } = require('../config/env');
 const { HttpError } = require('../utils/httpError');
 
-function signToken(user) {
-  return jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn: '7d' });
+// Access token (short-lived). Payload { userId, role } is the team contract: don't change it.
+function signToken(user, expiresIn = '1h') {
+  return jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn });
+}
+
+// Refresh token (long-lived, separate secret)
+function signRefreshToken(user) {
+  return jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+}
+function verifyRefreshToken(token) {
+  return jwt.verify(token, process.env.JWT_REFRESH_SECRET);
 }
 
 // Turns a token into { id, role }, or throws if it's fake/expired.
@@ -38,4 +36,14 @@ function requireAuth(req, res, next) {
   next();
 }
 
-module.exports = { signToken, verifyToken, requireAuth };
+// Use AFTER requireAuth:  router.post('/', requireAuth, requireRole('COORDINATOR', 'ADMIN'), ...)
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      throw new HttpError(403, 'You do not have permission to do this');
+    }
+    next();
+  };
+}
+
+module.exports = { signToken, signRefreshToken, verifyRefreshToken, verifyToken, requireAuth, requireRole };
