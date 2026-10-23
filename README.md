@@ -174,3 +174,65 @@ Connect with `io(SERVER_URL, { auth: { token } })`.
 | `message:new` | The message, with `sender` |
 | `typing` | `{ conversationId, userId, isTyping }` |
 | `notification:new` | The notification |
+
+
+## 📖 API reference — Person B (Auth, Profiles, Clubs, Events)
+
+All routes except register/login/refresh need `Authorization: Bearer <accessToken>`.
+List endpoints accept `?page=1&limit=20` and return `{ items, page, limit, total, hasMore }`.
+
+### Auth: `/api/auth`
+| Method | Path | Body |
+|---|---|---|
+| POST | `/api/auth/register` | `{ name, email, password, department?, year? }` → `{ user, accessToken, refreshToken }` |
+| POST | `/api/auth/login` | `{ email, password }` → `{ user, accessToken, refreshToken }` |
+| POST | `/api/auth/refresh` | `{ refreshToken }` → new tokens |
+| GET | `/api/auth/me` | Returns the logged-in user |
+
+Access tokens last 1 hour, refresh tokens 7 days. New users are always `STUDENT`.
+
+### Profiles: `/api/users`
+| Method | Path | Body / Query |
+|---|---|---|
+| GET | `/api/users/me` | My profile |
+| PATCH | `/api/users/me` | Any of `{ name, avatarUrl, department, year, bio, skills[], interests[], projectLinks[] }` |
+| GET | `/api/users` | `?search=&skill=&department=` |
+| GET | `/api/users/:id` | Public profile |
+
+### Clubs: `/api/clubs`
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/clubs` | `?search=` |
+| GET | `/api/clubs/mine` | Clubs I joined |
+| POST | `/api/clubs` | **Coordinator/Admin.** `{ name, description, category?, logoUrl? }` |
+| GET | `/api/clubs/:id` | Includes `isMember` and `upcomingEvents` |
+| PATCH | `/api/clubs/:id` | That club's coordinator or admin |
+| DELETE | `/api/clubs/:id` | That club's coordinator or admin |
+| POST | `/api/clubs/:id/join` | |
+| POST | `/api/clubs/:id/leave` | The coordinator cannot leave |
+| GET | `/api/clubs/:id/members` | |
+
+### Events: `/api/events`
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/events` | `?clubId=&search=&upcoming=false` (upcoming only by default). Each event has `registeredCount` and `spotsLeft` |
+| GET | `/api/events/mine/registered` | Events I registered for |
+| POST | `/api/events` | **Coordinator/Admin** of that club. `{ clubId, title, description, venue, startsAt, endsAt?, capacity?, imageUrl? }` |
+| GET | `/api/events/:id` | Includes `isRegistered` |
+| PATCH | `/api/events/:id` | Club coordinator/admin. Can set `{ status: "CANCELLED" }` |
+| DELETE | `/api/events/:id` | Club coordinator/admin |
+| POST | `/api/events/:id/register` | 409 if full or already registered |
+| DELETE | `/api/events/:id/register` | Cancel my registration |
+| GET | `/api/events/:id/registrations` | Club coordinator/admin only |
+
+### Admin: `/api/admin` (ADMIN role only)
+| Method | Path | Body / Query |
+|---|---|---|
+| GET | `/api/admin/users` | `?search=&role=` |
+| PATCH | `/api/admin/users/:id/role` | `{ role: "STUDENT" \| "COORDINATOR" \| "ADMIN" }` |
+
+> The role is stored inside the token, so after an admin changes someone's role, that person must log in again (or refresh) to get the new permissions.
+
+### Seeded test logins (password for all: `password123`)
+`admin@test.com` (ADMIN) · `coord@test.com` (COORDINATOR) · `aarav@test.com`, `diya@test.com`, `rahul@test.com`, `sneha@test.com` (STUDENT)
+Run `npm run db:seed` and then `npm run db:seed:b`.
