@@ -7,6 +7,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const env = require('./config/env');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 
